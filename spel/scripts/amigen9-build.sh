@@ -549,41 +549,6 @@ function ComposeOSpkgString {
     echo "${OSPACKAGESTRING}"
 }
 
-function PostBuildString {
-    local POSTBUILDCMD
-
-    POSTBUILDCMD="PostBuild.sh "
-
-    # Set the filesystem-type to use for OS filesystems
-    if [[ ${AMIGENFSTYPE} == "xfs" ]]
-    then
-        err_exit "Using default fstype [xfs] for boot filesysems" NONE
-    fi
-    POSTBUILDCMD+="-f ${AMIGENFSTYPE} "
-
-    # Set location for chroot-env
-    if [[ ${AMIGENCHROOT} == "/mnt/ec2-root" ]]
-    then
-        err_exit "Using default chroot-env location [${AMIGENCHROOT}]" NONE
-    else
-        POSTBUILDCMD+="-m ${AMIGENCHROOT} "
-    fi
-
-    # Set AMI starting time-zone
-    if [[ ${AMIGENTIMEZONE} == "UTC" ]]
-    then
-        err_exit "Using default AMI timezone [${AMIGENCHROOT}]" NONE
-    else
-        POSTBUILDCMD+="-z ${AMIGENTIMEZONE} "
-    fi
-
-    # Set image GRUB_TIMEOUT value
-    POSTBUILDCMD+="--grub-timeout ${GRUBTMOUT}"
-
-    # Return command-string for OS-script
-    echo "${POSTBUILDCMD}"
-}
-
 function PrepBuildDevice {
     local ROOT_DEV
     local ROOT_DISK
@@ -594,25 +559,30 @@ function PrepBuildDevice {
 
     if [[ "${CLOUDPROVIDER}" == "azure" ]]
     then
-        ROOT_DEV="$(findmnt -n -o SOURCE /)"
-        ROOT_DEV="$(readlink -f "$ROOT_DEV")"  # resolve /dev/mapper -> /dev/dm-*
 
-        tmp_dev="$ROOT_DEV"
-        while true; do
-            parent="$(lsblk -ndo PKNAME "$tmp_dev")"
-            if [[ -z "$parent" ]]; then
-                ROOT_DISK="$tmp_dev"
-                break
-            fi
-            tmp_dev="/dev/$parent"
-        done
-        mapfile -t DISKS < <(
-            lsblk -ndo NAME,TYPE | awk '$2=="disk" && $1 !~ /^(dm-|loop|sr)/ {print "/dev/"$1}'
-        )
+        MAPPER_ROOT="$(findmnt -n -o SOURCE / | awk '{$1=$1};1')"
+        err_exit "MAPPER_ROOT:$MAPPER_ROOT---" NONE
+        VG_NAME="$(lvs -o vg_name --noheadings $MAPPER_ROOT | awk '{$1=$1};1')"
+        err_exit "VG_NAME:$VG_NAME---" NONE
+        PV_NAME=$(pvs --noheadings -o pv_name,vg_name | awk -v VG_NAME="$VG_NAME" '$2 == VG_NAME {print $1}')
+        err_exit "PV_NAME:$PV_NAME---" NONE
+        BASE_DEVICE=$(basename "$PV_NAME" | awk '{$1=$1};1')
+        err_exit "BASE_DEVICE:$BASE_DEVICE---" NONE
 
-        err_exit "Detected disks (excluding dm-*): ${DISKS[*]}" NONE
-        err_exit "Root device: $ROOT_DEV" NONE
-        err_exit "Root disk  : $ROOT_DISK" NONE
+        # Find the parent device by traversing the /sys/ directory
+        DRIVE_NAME=$(readlink -f /sys/class/block/"$BASE_DEVICE"/.. | xargs basename)
+        err_exit "BASE_DEVICE:$DRIVE_NAME---" NONE
+
+        ROOT_DISK="/dev/$DRIVE_NAME"
+
+        DISKS=($(lsblk -n -o NAME,TYPE | awk '$2=="disk" {print "/dev/"$1}'))
+
+        err_exit "Detected disks:${DISKS[*]}---" NONE        
+        err_exit "Root disk:$ROOT_DISK---" NONE
+        
+        if [[ -z "$ROOT_DISK" ]]; then
+            err_exit "ERROR: Could not find a second disk for the chroot build. Detected disks: ${DISKS[*]}"        
+        fi
 
     else
         ROOT_DEV="$( grep ' / ' /proc/mounts | cut -d " " -f 1 )"
