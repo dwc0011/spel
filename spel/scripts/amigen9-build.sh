@@ -589,32 +589,48 @@ function PrepBuildDevice {
     local ROOT_DISK
     local DISKS
 
-    # Select the disk to use for the build
     err_exit "Detecting the root device..." NONE
-    ROOT_DEV="$( grep ' / ' /proc/mounts | cut -d " " -f 1 )"
-    if [[ ${ROOT_DEV} == /dev/nvme* ]]
-    then
-      ROOT_DISK="${ROOT_DEV//p*/}"
-      IFS=" " read -r -a DISKS <<< "$(echo /dev/nvme*n1)"
-    else
-      err_exit "ERROR: This script supports nvme device naming. Could not determine root disk from device name: ${ROOT_DEV}"
+
+    # Find the device backing /
+    ROOT_DEV="$(findmnt -n -o SOURCE /)"
+
+    # Resolve symlinks (/dev/mapper -> /dev/dm-* -> underlying disk)
+    ROOT_DEV="$(readlink -f "$ROOT_DEV")"
+
+    # Get parent "disk" (works for partitions, dm, nvme, scsi)
+    ROOT_DISK="/dev/$(lsblk -ndo PKNAME "$ROOT_DEV")"
+    if [[ -z "$ROOT_DISK" ]]; then
+        # ROOT_DEV might already be a disk
+        ROOT_DISK="$ROOT_DEV"
     fi
 
-    if [[ "$USEROOTDEVICE" = "true" ]]
-    then
-      AMIGENBUILDDEV="${ROOT_DISK}"
-    elif [[ ${#DISKS[@]} -gt 2 ]]
-    then
-      err_exit "ERROR: This script supports at most 2 attached disks. Detected ${#DISKS[*]} disks"
+    # Collect all real disks (exclude loop, sr, dm, etc.)
+    mapfile -t DISKS < <(lsblk -ndo NAME,TYPE | awk '$2=="disk"{print "/dev/"$1}')
+
+    # Log detected disks
+    err_exit "Detected disks: ${DISKS[*]}" NONE
+    err_exit "Root device: $ROOT_DEV" NONE
+    err_exit "Root disk  : $ROOT_DISK" NONE
+
+    if [[ "$USEROOTDEVICE" == "true" ]]; then
+        AMIGENBUILDDEV="$ROOT_DISK"
+    elif [[ ${#DISKS[@]} -gt 2 ]]; then
+        err_exit "ERROR: This script supports at most 2 attached disks. Detected ${#DISKS[*]} disks"
     else
-      AMIGENBUILDDEV="$(echo "${DISKS[@]/$ROOT_DISK}" | tr -d '[:space:]')"
+        # Use the disk that isn't root
+        for d in "${DISKS[@]}"; do
+            if [[ "$d" != "$ROOT_DISK" ]]; then
+                AMIGENBUILDDEV="$d"
+                break
+            fi
+        done
     fi
+
     err_exit "Using ${AMIGENBUILDDEV} as the build device." NONE
 
-    # Make sure the disk has a GPT label
+    # Ensure GPT label exists
     err_exit "Checking ${AMIGENBUILDDEV} for a GPT label..." NONE
-    if ! blkid "$AMIGENBUILDDEV"
-    then
+    if ! blkid "$AMIGENBUILDDEV" >/dev/null 2>&1; then
         err_exit "No label detected. Creating GPT label on ${AMIGENBUILDDEV}..." NONE
         parted -s "$AMIGENBUILDDEV" -- mklabel gpt
         blkid "$AMIGENBUILDDEV"
