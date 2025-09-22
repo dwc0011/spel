@@ -550,6 +550,41 @@ function ComposeOSpkgString {
     echo "${OSPACKAGESTRING}"
 }
 
+function PostBuildString {
+    local POSTBUILDCMD
+
+    POSTBUILDCMD="PostBuild.sh "
+
+    # Set the filesystem-type to use for OS filesystems
+    if [[ ${AMIGENFSTYPE} == "xfs" ]]
+    then
+        err_exit "Using default fstype [xfs] for boot filesysems" NONE
+    fi
+    POSTBUILDCMD+="-f ${AMIGENFSTYPE} "
+
+    # Set location for chroot-env
+    if [[ ${AMIGENCHROOT} == "/mnt/ec2-root" ]]
+    then
+        err_exit "Using default chroot-env location [${AMIGENCHROOT}]" NONE
+    else
+        POSTBUILDCMD+="-m ${AMIGENCHROOT} "
+    fi
+
+    # Set AMI starting time-zone
+    if [[ ${AMIGENTIMEZONE} == "UTC" ]]
+    then
+        err_exit "Using default AMI timezone [${AMIGENCHROOT}]" NONE
+    else
+        POSTBUILDCMD+="-z ${AMIGENTIMEZONE} "
+    fi
+
+    # Set image GRUB_TIMEOUT value
+    POSTBUILDCMD+="--grub-timeout ${GRUBTMOUT}"
+
+    # Return command-string for OS-script
+    echo "${POSTBUILDCMD}"
+}
+
 function PrepBuildDevice {
     local ROOT_DEV
     local ROOT_DISK
