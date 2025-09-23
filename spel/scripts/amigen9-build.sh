@@ -607,16 +607,15 @@ function PrepBuildDevice {
     # Check if root-dev type is supported
     if [[ ${ROOT_DEV} == /dev/nvme* ]]
     then
-    ROOT_DISK="${ROOT_DEV//p*/}"
-    mapfile -t DISKS < <( echo /dev/nvme*n1 )
+        ROOT_DISK="${ROOT_DEV//p*/}"
+        mapfile -t DISKS < <( echo /dev/nvme*n1 )
     elif [[ ${ROOT_DEV} == /dev/sd* ]]
     then
-    ROOT_DISK="${ROOT_DEV%?}"
-    mapfile -t DISKS < <( echo /dev/sd[a-z] )
+        ROOT_DISK="${ROOT_DEV%?}"
+        mapfile -t DISKS < <( echo /dev/sd[a-z] )
     else
-    err_exit "ERROR: This script supports sd or nvme device naming, only. Could not determine root disk from device name: ${ROOT_DEV}"
+        err_exit "ERROR: This script supports sd or nvme device naming, only. Could not determine root disk from device name: ${ROOT_DEV}"
     fi
-
 
     if [[ "$USEROOTDEVICE" = "true" ]]
     then
