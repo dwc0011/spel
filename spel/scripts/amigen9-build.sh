@@ -593,28 +593,52 @@ function PrepBuildDevice {
     # Select the disk to use for the build
     err_exit "Detecting the root device..." NONE
     ROOT_DEV="$( grep ' / ' /proc/mounts | cut -d " " -f 1 )"
+    
+    if [[ ${ROOT_DEV} == /dev/mapper* && "${CLOUDPROVIDER}" == "azure" ]]
+    then
+        ROOT_DEV="$(findmnt -n -o SOURCE /)"
+        ROOT_DEV="$(readlink -f "$ROOT_DEV")"  # resolve /dev/mapper -> /dev/dm-*
 
-    # Use alternate method to find ROOT_DEV (mostly for Azure)
-    if [[ ${ROOT_DEV} == "none" ]]
-    then
-      ROOT_DEV="$(
-        blkid | grep "$(
-          awk '/\s\s*\/\s\s*/{ print $1 }' /etc/fstab | cut -d '=' -f 2
-        )" | sed -e 's/:.*$//'
-      )"
-    fi
+        tmp_dev="$ROOT_DEV"
+        while true; do
+            parent="$(lsblk -ndo PKNAME "$tmp_dev")"
+            if [[ -z "$parent" ]]; then
+                ROOT_DISK="$tmp_dev"
+                break
+            fi
+            tmp_dev="/dev/$parent"
+        done
+        mapfile -t DISKS < <(
+            lsblk -ndo NAME,TYPE | awk '$2=="disk" && $1 !~ /^(dm-|loop|sr)/ {print "/dev/"$1}'
+        )
 
-    # Check if root-dev type is supported
-    if [[ ${ROOT_DEV} == /dev/nvme* ]]
-    then
-      ROOT_DISK="${ROOT_DEV//p*/}"
-      mapfile -t DISKS < <( echo /dev/nvme*n1 )
-    elif [[ ${ROOT_DEV} == /dev/sd* ]]
-    then
-      ROOT_DISK="${ROOT_DEV%?}"
-      mapfile -t DISKS < <( echo /dev/sd[a-z] )
+        err_exit "Detected disks (excluding dm-*): ${DISKS[*]}" NONE
+        err_exit "Root device: $ROOT_DEV" NONE
+        err_exit "Root disk  : $ROOT_DISK" NONE
+
     else
-      err_exit "ERROR: This script supports sd or nvme device naming, only. Could not determine root disk from device name: ${ROOT_DEV}"
+        # Use alternate method to find ROOT_DEV (mostly for Azure)
+        if [[ ${ROOT_DEV} == "none" ]]
+        then
+        ROOT_DEV="$(
+            blkid | grep "$(
+            awk '/\s\s*\/\s\s*/{ print $1 }' /etc/fstab | cut -d '=' -f 2
+            )" | sed -e 's/:.*$//'
+        )"
+        fi
+
+        # Check if root-dev type is supported
+        if [[ ${ROOT_DEV} == /dev/nvme* ]]
+        then
+        ROOT_DISK="${ROOT_DEV//p*/}"
+        mapfile -t DISKS < <( echo /dev/nvme*n1 )
+        elif [[ ${ROOT_DEV} == /dev/sd* ]]
+        then
+        ROOT_DISK="${ROOT_DEV%?}"
+        mapfile -t DISKS < <( echo /dev/sd[a-z] )
+        else
+        err_exit "ERROR: This script supports sd or nvme device naming, only. Could not determine root disk from device name: ${ROOT_DEV}"
+        fi
     fi
 
     if [[ "$USEROOTDEVICE" = "true" ]]
