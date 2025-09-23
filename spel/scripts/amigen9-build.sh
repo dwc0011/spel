@@ -226,7 +226,7 @@ function BuildChroot {
                 # export HTTP_PROXY
                 # bash -euxo pipefail "${ELBUILD}/AzureUtils.sh" || \
                 #     err_exit "Failure encountered with AzureUtils.sh"
-                err_exit "Ignoring AzureUtils.sh as it does not exist"
+                echo "Ignoring AzureUtils.sh as it does not exist"
             )
             ;;
         *)
