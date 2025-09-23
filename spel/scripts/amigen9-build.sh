@@ -596,25 +596,29 @@ function PrepBuildDevice {
     
     if [[ ${ROOT_DEV} == /dev/mapper* && "${CLOUDPROVIDER}" == "azure" ]]
     then
-        ROOT_DEV="$(findmnt -n -o SOURCE /)"
-        ROOT_DEV="$(readlink -f "$ROOT_DEV")"  # resolve /dev/mapper -> /dev/dm-*
+        MAPPER_ROOT="$(findmnt -n -o SOURCE / | awk '{$1=$1};1')"
+        err_exit "MAPPER_ROOT:$MAPPER_ROOT---" NONE
+        VG_NAME="$(lvs -o vg_name --noheadings $MAPPER_ROOT | awk '{$1=$1};1')"
+        err_exit "VG_NAME:$VG_NAME---" NONE
+        PV_NAME=$(pvs --noheadings -o pv_name,vg_name | awk -v VG_NAME="$VG_NAME" '$2 == VG_NAME {print $1}')
+        err_exit "PV_NAME:$PV_NAME---" NONE
+        BASE_DEVICE=$(basename "$PV_NAME" | awk '{$1=$1};1')
+        err_exit "BASE_DEVICE:$BASE_DEVICE---" NONE
 
-        tmp_dev="$ROOT_DEV"
-        while true; do
-            parent="$(lsblk -ndo PKNAME "$tmp_dev")"
-            if [[ -z "$parent" ]]; then
-                ROOT_DISK="$tmp_dev"
-                break
-            fi
-            tmp_dev="/dev/$parent"
-        done
-        mapfile -t DISKS < <(
-            lsblk -ndo NAME,TYPE | awk '$2=="disk" && $1 !~ /^(dm-|loop|sr)/ {print "/dev/"$1}'
-        )
+        # Find the parent device by traversing the /sys/ directory
+        DRIVE_NAME=$(readlink -f /sys/class/block/"$BASE_DEVICE"/.. | xargs basename)
+        err_exit "BASE_DEVICE:$DRIVE_NAME---" NONE
 
-        err_exit "Detected disks (excluding dm-*): ${DISKS[*]}" NONE
-        err_exit "Root device: $ROOT_DEV" NONE
-        err_exit "Root disk  : $ROOT_DISK" NONE
+        ROOT_DISK="/dev/$DRIVE_NAME"
+
+        DISKS=($(lsblk -n -o NAME,TYPE | awk '$2=="disk" {print "/dev/"$1}'))
+
+        err_exit "Detected disks:${DISKS[*]}---" NONE        
+        err_exit "Root disk:$ROOT_DISK---" NONE
+        
+        if [[ -z "$ROOT_DISK" ]]; then
+            err_exit "ERROR: Could not find a second disk for the chroot build. Detected disks: ${DISKS[*]}"        
+        fi
 
     else
         # Use alternate method to find ROOT_DEV (mostly for Azure)
