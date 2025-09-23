@@ -593,57 +593,30 @@ function PrepBuildDevice {
     # Select the disk to use for the build
     err_exit "Detecting the root device..." NONE
     ROOT_DEV="$( grep ' / ' /proc/mounts | cut -d " " -f 1 )"
-    
-    if [[ ${ROOT_DEV} == /dev/mapper* && "${CLOUDPROVIDER}" == "azure" ]]
+   
+    # Use alternate method to find ROOT_DEV (mostly for Azure)
+    if [[ ${ROOT_DEV} == "none" ]]
     then
-        MAPPER_ROOT="$(findmnt -n -o SOURCE / | awk '{$1=$1};1')"
-        err_exit "MAPPER_ROOT:$MAPPER_ROOT---" NONE
-        VG_NAME="$(lvs -o vg_name --noheadings $MAPPER_ROOT | awk '{$1=$1};1')"
-        err_exit "VG_NAME:$VG_NAME---" NONE
-        PV_NAME=$(pvs --noheadings -o pv_name,vg_name | awk -v VG_NAME="$VG_NAME" '$2 == VG_NAME {print $1}')
-        err_exit "PV_NAME:$PV_NAME---" NONE
-        BASE_DEVICE=$(basename "$PV_NAME" | awk '{$1=$1};1')
-        err_exit "BASE_DEVICE:$BASE_DEVICE---" NONE
-
-        # Find the parent device by traversing the /sys/ directory
-        DRIVE_NAME=$(readlink -f /sys/class/block/"$BASE_DEVICE"/.. | xargs basename)
-        err_exit "BASE_DEVICE:$DRIVE_NAME---" NONE
-
-        ROOT_DISK="/dev/$DRIVE_NAME"
-
-        DISKS=($(lsblk -n -o NAME,TYPE | awk '$2=="disk" {print "/dev/"$1}'))
-
-        err_exit "Detected disks:${DISKS[*]}---" NONE        
-        err_exit "Root disk:$ROOT_DISK---" NONE
-        
-        if [[ -z "$ROOT_DISK" ]]; then
-            err_exit "ERROR: Could not find a second disk for the chroot build. Detected disks: ${DISKS[*]}"        
-        fi
-
-    else
-        # Use alternate method to find ROOT_DEV (mostly for Azure)
-        if [[ ${ROOT_DEV} == "none" ]]
-        then
-        ROOT_DEV="$(
-            blkid | grep "$(
-            awk '/\s\s*\/\s\s*/{ print $1 }' /etc/fstab | cut -d '=' -f 2
-            )" | sed -e 's/:.*$//'
-        )"
-        fi
-
-        # Check if root-dev type is supported
-        if [[ ${ROOT_DEV} == /dev/nvme* ]]
-        then
-        ROOT_DISK="${ROOT_DEV//p*/}"
-        mapfile -t DISKS < <( echo /dev/nvme*n1 )
-        elif [[ ${ROOT_DEV} == /dev/sd* ]]
-        then
-        ROOT_DISK="${ROOT_DEV%?}"
-        mapfile -t DISKS < <( echo /dev/sd[a-z] )
-        else
-        err_exit "ERROR: This script supports sd or nvme device naming, only. Could not determine root disk from device name: ${ROOT_DEV}"
-        fi
+    ROOT_DEV="$(
+        blkid | grep "$(
+        awk '/\s\s*\/\s\s*/{ print $1 }' /etc/fstab | cut -d '=' -f 2
+        )" | sed -e 's/:.*$//'
+    )"
     fi
+
+    # Check if root-dev type is supported
+    if [[ ${ROOT_DEV} == /dev/nvme* ]]
+    then
+    ROOT_DISK="${ROOT_DEV//p*/}"
+    mapfile -t DISKS < <( echo /dev/nvme*n1 )
+    elif [[ ${ROOT_DEV} == /dev/sd* ]]
+    then
+    ROOT_DISK="${ROOT_DEV%?}"
+    mapfile -t DISKS < <( echo /dev/sd[a-z] )
+    else
+    err_exit "ERROR: This script supports sd or nvme device naming, only. Could not determine root disk from device name: ${ROOT_DEV}"
+    fi
+
 
     if [[ "$USEROOTDEVICE" = "true" ]]
     then
