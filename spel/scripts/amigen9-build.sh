@@ -289,12 +289,13 @@ function CollectManifest {
         fi
     elif [[ "${CLOUDPROVIDER}" == "azure" ]]
     then
-        echo "Saving the waagent version to the manifest"
-        [[ -o xtrace ]] && XTRACE='set -x' || XTRACE='set +x'
-        set +x
-        (chroot "${AMIGENCHROOT}" /usr/sbin/waagent --version) 2>&1 | \
-            tee -a /tmp/manifest.txt
-        eval "$XTRACE"
+        echo "Skipping saving waagent version to the manifest - did not install it"
+        # echo "Saving the waagent version to the manifest"
+        # [[ -o xtrace ]] && XTRACE='set -x' || XTRACE='set +x'
+        # set +x
+        # (chroot "${AMIGENCHROOT}" /usr/sbin/waagent --version) 2>&1 | \
+        #     tee -a /tmp/manifest.txt
+        # eval "$XTRACE"
     fi
 
     echo "Saving the RPM manifest"
