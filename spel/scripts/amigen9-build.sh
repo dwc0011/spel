@@ -287,8 +287,7 @@ function CollectManifest {
             eval "$XTRACE"
         fi
     elif [[ "${CLOUDPROVIDER}" == "azure" ]]
-    then
-        echo "Skipping saving waagent version to the manifest - did not install it"
+    then        
         echo "Saving the waagent version to the manifest"
         [[ -o xtrace ]] && XTRACE='set -x' || XTRACE='set +x'
         set +x
@@ -608,7 +607,12 @@ function PrepBuildDevice {
     if [[ ${ROOT_DEV} == /dev/nvme* ]]
     then
         ROOT_DISK="${ROOT_DEV//p*/}"
-        mapfile -t DISKS < <( echo /dev/nvme*n1 )
+        if [[ "${CLOUDPROVIDER}" == "azure" ]]
+        then
+            mapfile -t DISKS < <( echo /dev/nvme*n[0-9] )
+        else
+            mapfile -t DISKS < <( echo /dev/nvme*n1 )
+        fi
     elif [[ ${ROOT_DEV} == /dev/sd* ]]
     then
         ROOT_DISK="${ROOT_DEV%?}"
