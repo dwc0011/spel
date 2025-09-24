@@ -223,10 +223,9 @@ function BuildChroot {
             ;;
         azure)
             (
-                # export HTTP_PROXY
-                # bash -euxo pipefail "${ELBUILD}/AzureUtils.sh" || \
-                #     err_exit "Failure encountered with AzureUtils.sh"
-                echo "Ignoring AzureUtils.sh as it does not exist"
+                export HTTP_PROXY
+                bash -euxo pipefail "${ELBUILD}/AzureUtils.sh" || \
+                    err_exit "Failure encountered with AzureUtils.sh"                
             )
             ;;
         *)
@@ -290,12 +289,12 @@ function CollectManifest {
     elif [[ "${CLOUDPROVIDER}" == "azure" ]]
     then
         echo "Skipping saving waagent version to the manifest - did not install it"
-        # echo "Saving the waagent version to the manifest"
-        # [[ -o xtrace ]] && XTRACE='set -x' || XTRACE='set +x'
-        # set +x
-        # (chroot "${AMIGENCHROOT}" /usr/sbin/waagent --version) 2>&1 | \
-        #     tee -a /tmp/manifest.txt
-        # eval "$XTRACE"
+        echo "Saving the waagent version to the manifest"
+        [[ -o xtrace ]] && XTRACE='set -x' || XTRACE='set +x'
+        set +x
+        (chroot "${AMIGENCHROOT}" /usr/sbin/waagent --version) 2>&1 | \
+            tee -a /tmp/manifest.txt
+        eval "$XTRACE"
     fi
 
     echo "Saving the RPM manifest"
